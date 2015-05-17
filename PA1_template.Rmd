@@ -1,25 +1,263 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: "M Askari"
+date: "Saturday, May 16, 2015"
 output: 
   html_document:
     keep_md: true
 ---
 
 
+This is an R Markdown document for peer assignment 1 of coursera course.  
+
+### Data for this assignment
+
+Dataset: [Activity monitoring data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)
+
+### Variables in input data
+
+- steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+
+- date: The date on which the measurement was taken in YYYY-MM-DD format
+
+- interval: Identifier for the 5-minute interval in which measurement was taken
+
+### Setting Working Directory
+
+```{r, echo=TRUE}
+# Please set the working directory to location you saved input data
+# Commented for final commit. 
+# setwd("C:/XXXXXX/GitHub/RepData_PeerAssessment1")
+```
+
+```{r setoptions, echo=FALSE,include=FALSE}
+library(knitr)
+#Setting global variable for echo
+opts_chunk$set(echo=FALSE,result="hide",fig.path="figures/")
+library(data.table)
+library(dplyr)
+```
+
+
 ## Loading and preprocessing the data
+```{r}
+
+# Loading and transforming the data
+activityData<-read.table("activity.csv",
+              header=TRUE,sep=",",
+              colClasses=c('numeric','character','numeric'), 
+              na.strings="NA")
+activityDataTransformed<-mutate(activityData,NewDate=as.POSIXct(strptime(activityData$date, "%Y-%m-%d")))
+
+# Selecting only 3 column and getting rid of old date column
+activityData<-activityDataTransformed[,c("steps","NewDate","interval")]
+
+# Renaming to all lower case names. 
+names(activityData)<-c("steps","date","intervals")
 
 
-
+```
+  
+   
+   
 ## What is mean total number of steps taken per day?
 
+Below chart shows a historgam for number of steps taken for each day. 
+```{r InitialHistogram}
+#drawing the first chart
+histData<-activityData %>% group_by(date) %>% summarise(totalSteps=sum(steps,na.rm=TRUE))
+hist(histData$totalSteps,xlab="Steps",ylab="Days",col="red" ,breaks=5, main="Steps taken on a Daily basis")
+
+```
+
+### Daily Mean
+
+Below chart shows daily mean of steps taken (excluding NA days):
+
+```{r DailyMeanWithNA}
+groupedActivityData<-group_by(activityData,date)
+dailySummary<-summarise(groupedActivityData,Daily_Mean=mean(steps,na.rm = TRUE),Daily_Median=median(steps,na.rm = TRUE))
+
+with(dailySummary[!is.na(dailySummary$Daily_Mean),],
+     {
+             plot(date,Daily_Mean,type="n",xlab="Days",ylab="Mean Steps",xaxt = "n");
+             lines(date,Daily_Mean,col="red")
+             axis(1, date, format(date, "%d %b"), cex.axis = .6 ,las=2)
+             legend("topleft",pch=NA,col=c("red"),legend=c("Daily Mean (NA excluded)"),lwd=1)
+        
+        
+}
+     )
+```
+
+
+### Daily Median
+
+Below chart shows daily Median of steps taken (excluding NA days):
+
+```{r DaiyMedianWithNA}
+with(dailySummary[!is.na(dailySummary$Daily_Median),],
+     {
+             plot(date,Daily_Median,type="n",xlab="Days",ylab="Median Steps",xaxt = "n");
+             lines(date,Daily_Median,col="blue")
+             axis(1, date, format(date, "%d %b"), cex.axis = .6 ,las=2)
+             legend("topleft",pch=NA,col=c("blue"),legend=c("Daily Meidan (NA excluded)"),lwd=1)
+        
+        
+}
+     )
+```
+
+Values of summary is presentd in variable named `dailySummary` . Here is how you can access this variable using head command:
+
+
+```{r}
+head(dailySummary,n=10)
+```
 
 
 ## What is the average daily activity pattern?
 
 
+```{r DailyActivityPattern}
+groupedActivityData<-group_by(activityData,intervals)
+dailyPattern<-summarise(groupedActivityData, dailyMean=mean(steps,na.rm=TRUE))
+with(dailyPattern,
+     {
+             plot(intervals,dailyMean,type="n",xlab="Minutes",ylab="Mean Steps");
+             lines(intervals,dailyMean,col="blue")
+             legend("toprigh",pch=NA,col=c("blue"),legend=c("Interval Meidan (NA excluded)"),lwd=1)
+        
+        
+}
+     )
+```
 
-## Imputing missing values
+Arranging the variable `dailyPattern` by column of dailyMean and selecting the first row will give you answer to which interval has Maximum avg number of steps:
+
+```{r}
+dailyPattern<-arrange(dailyPattern,desc(dailyMean))
+head(dailyPattern,n=1)
+```
+
+Converting above value to time in a day. Makes 1:55 PM to 2:00 PM holding record of number of steps in our dataset.
+
+## Imputing missing values 
+
+
+
+In our data set we have following number as rows without value in "steps" column
+
+```{r SecondHistReplacedNA}
+nrow(activityData[is.na(activityData$steps),])
+
+groupedActivityData<-group_by(activityData,intervals)
+dailySummary<-summarise(groupedActivityData,Daily_Mean=mean(steps,na.rm = TRUE),
+                        Daily_Median=median(steps,na.rm = TRUE))
+
+missingdata<-activityData[is.na(activityData$steps),]
+# Merging data based on interval
+mergedData<-merge(missingdata,dailySummary,by="intervals")
+mergedData<-mergedData[,c("Daily_Mean","date","intervals")]
+names(mergedData)<-c("steps","date","intervals")
+
+# Getting subset of data which had data from start
+nomissingdata<-activityData[!is.na(activityData$steps),]
+
+# Adding filled data back into the dataset
+finalData<-rbind(nomissingdata,mergedData)
+
+
+histData<-finalData %>% group_by(date) %>% summarise(totalSteps=sum(steps,na.rm=TRUE))
+hist(histData$totalSteps,xlab="Steps",ylab="Days",col="red" ,breaks=5, main="Steps taken on a Daily basis")
+
+
+```
+And now we are showing the daily Mean and Median after chaning the missing values
+
+### Daily Mean ( With NA data replaced)
+
+```{r DailyMeanReplacedNA}
+
+groupedActivityData<-group_by(finalData,date)
+dailySummary<-summarise(groupedActivityData,Daily_Mean=mean(steps,na.rm = TRUE),Daily_Median=median(steps,na.rm = TRUE))
+
+with(dailySummary[!is.na(dailySummary$Daily_Mean),],
+     {
+             plot(date,Daily_Mean,type="n",xlab="Days",ylab="Mean Steps",xaxt = "n");
+             lines(date,Daily_Mean,col="red")
+             axis(1, date, format(date, "%d %b"), cex.axis = .6 ,las=2)
+             legend("topleft",pch=NA,col=c("red"),legend=c("Daily Mean (NA Replaced)"),lwd=1)
+        
+        
+}
+     )
+```
+
+### Daily Median ( With NA data replaced)
+
+```{r DailyMedianReplacedNA}
+with(dailySummary[!is.na(dailySummary$Daily_Median),],
+     {
+             plot(date,Daily_Median,type="n",xlab="Days",ylab="Median Steps",xaxt = "n");
+             lines(date,Daily_Median,col="blue")
+             axis(1, date, format(date, "%d %b"), cex.axis = .6 ,las=2)
+             legend("topleft",pch=NA,col=c("blue"),legend=c("Daily Meidan (NA Replaced)"),lwd=1)
+        
+        
+}
+     )
+```
+
+### Impact of replacing NA
+
+As you can see and compare two histograms the filling up missing values DID NOT change the sample mean. Histogram is more peaked around the mean.
 
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+
+```{r weekdaysvsweekend}
+
+finalData<-mutate(finalData,WeeKDayFlag=ifelse((weekdays(date)=="Saturday"| weekdays(date)=="Sunday"),"weekend","weekday"))
+groupedActivityData<-group_by(finalData,intervals,WeeKDayFlag)
+dailyPattern<-summarise(groupedActivityData, dailyMean=mean(steps,na.rm=TRUE))
+
+with(dailyPattern[dailyPattern$WeeKDayFlag=="weekend",],
+{
+        plot(intervals,dailyMean,type="n",xlab="Minutes",ylab="Mean Steps",main="Weekend Pattern");
+        lines(intervals,dailyMean,col="blue")
+        legend("toprigh",pch=NA,col=c("blue"),legend=c("Mean Steps(NA Replaced)"),lwd=1)
+        
+        
+}
+)
+
+with(dailyPattern[dailyPattern$WeeKDayFlag=="weekday",],
+{
+        plot(intervals,dailyMean,type="n",xlab="Minutes",ylab="Mean Steps",main="Weekdays Pattern");
+        lines(intervals,dailyMean,col="blue")
+        legend("toprigh",pch=NA,col=c("blue"),legend=c("Mean Steps(NA Replaced)"),lwd=1)
+        
+        
+}
+)
+                  
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
